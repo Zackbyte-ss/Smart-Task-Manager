@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Task Manager | React Project</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loader {
+            border-top-color: #3b82f6;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-500 to-pink-600-50 min-h-screen">
+    <div id="root"></div>
+    
+    <script src="https://unpkg.com/react@18.2.0/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <script type="text/babel">
+        // ========== REUSABLE BUTTON COMPONENT ==========
+        const Button = ({ onClick, children, variant = "primary", disabled = false }) => {
+            const baseClasses = "px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1";
+            const variants = {
+                primary: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md focus:ring-indigo-500 disabled:bg-indigo-300",
+                danger: "bg-red-500 hover:bg-red-600 text-white shadow-sm focus:ring-red-400 disabled:bg-red-300",
+                secondary: "bg-gray-200 hover:bg-gray-300 text-gray-800 focus:ring-gray-400 disabled:bg-gray-100",
+                outline: "border border-indigo-300 text-indigo-700 hover:bg-indigo-50 focus:ring-indigo-300"
+            };
+            return (
+                <button 
+                    onClick={onClick} 
+                    disabled={disabled}
+                    className={`${baseClasses} ${variants[variant]} ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
+                >
+                    {children}
+                </button>
+            );
+        };
+        
+        // ========== REUSABLE CARD COMPONENT ==========
+        const Card = ({ children, className = "" }) => {
+            return (
+                <div className={`bg-white rounded-2xl shadow-lg p-5 border border-gray-100 transition-all hover:shadow-xl ${className}`}>
+                    {children}
+                </div>
+            );
+        };
+        
+        // ========== TASK ITEM COMPONENT ==========
+        const TaskItem = ({ task, onToggle, onDelete, onEdit }) => {
+            const priorityColor = {
+                high: "bg-red-100 text-red-700 border-red-200",
+                medium: "bg-yellow-100 text-yellow-700 border-yellow-200",
+                low: "bg-green-100 text-green-700 border-green-200"
+            };
+            
+            return (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 mb-3 bg-gray-50 rounded-xl border border-gray-200 transition-all hover:border-indigo-200">
+                    <div className="flex items-start gap-3 flex-1">
+                        <input 
+                            type="checkbox" 
+                            checked={task.completed}
+                            onChange={() => onToggle(task.id)}
+                            className="mt-1 w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
+                        />
+                        <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                                <span className={`font-semibold text-gray-800 ${task.completed ? 'line-through text-gray-400' : ''}`}>
+                                    {task.title}
+                                </span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full border ${priorityColor[task.priority]}`}>
+                                    {task.priority}
+                                </span>
+                                {task.category && (
+                                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full">
+                                        #{task.category}
+                                    </span>
+                                )}
+                            </div>
+                            {task.description && (
+                                <p className={`text-sm text-gray-500 ${task.completed ? 'line-through opacity-60' : ''}`}>
+                                    {task.description}
+                                </p>
+                            )}
+                            <p className="text-xs text-gray-400 mt-1">
+                                Created: {new Date(task.createdAt).toLocaleDateString()}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex gap-2 mt-3 sm:mt-0">
+                        <Button variant="outline" onClick={() => onEdit(task)}>Edit</Button>
+                        <Button variant="danger" onClick={() => onDelete(task.id)}>Delete</Button>
+                    </div>
+                </div>
+            );
+        };
+        
+        // ========== TASK FORM COMPONENT ==========
+        const TaskForm = ({ onAddTask, editingTask, onCancelEdit }) => {
+            const [title, setTitle] = React.useState(editingTask ? editingTask.title : "");
+            const [description, setDescription] = React.useState(editingTask ? editingTask.description : "");
+            const [priority, setPriority] = React.useState(editingTask ? editingTask.priority : "medium");
+            const [category, setCategory] = React.useState(editingTask ? editingTask.category : "");
+            const [errors, setErrors] = React.useState({});
+            
+            React.useEffect(() => {
+                if (editingTask) {
+                    setTitle(editingTask.title);
+                    setDescription(editingTask.description || "");
+                    setPriority(editingTask.priority);
+                    setCategory(editingTask.category || "");
+                } else {
+                    setTitle("");
+                    setDescription("");
+                    setPriority("medium");
+                    setCategory("");
+                }
+                setErrors({});
+            }, [editingTask]);
+            
+            const validateForm = () => {
+                const newErrors = {};
+                if (!title.trim()) newErrors.title = "Task title cannot be empty";
+                if (title.trim().length > 80) newErrors.title = "Title must be less than 80 characters";
+                setErrors(newErrors);
+                return Object.keys(newErrors).length === 0;
+            };
+            
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (!validateForm()) return;
+                
+                onAddTask({
+                    title: title.trim(),
+                    description: description.trim(),
+                    priority,
+                    category: category.trim(),
+                });
+                
+                if (!editingTask) {
+                    setTitle("");
+                    setDescription("");
+                    setPriority("medium");
+                    setCategory("");
+                }
+            };
+            
+            return (
+                <Card className="mb-8">
+                    <h3 className="text-xl font-bold text-gray-800 mb-4">
+                        {editingTask ? "✏️ Edit Task" : "➕ Create New Task"}
+                    </h3>
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Task Title *</label>
+                            <input 
+                                type="text"
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                className={`w-full px-4 py-2 border ${errors.title ? 'border-red-400' : 'border-gray-300'} rounded-xl focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500 outline-none transition`}
+                                placeholder="Enter task title..."
+                            />
+                            {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                            <textarea 
+                                value={description}
+                                onChange={(e) => setDescription(e.target.value)}
+                                rows="2"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-indigo-300 focus:border-indigo-500 outline-none"
+                                placeholder="Add details..."
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                                <select 
+                                    value={priority}
+                                    onChange={(e) => setPriority(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-indigo-300 bg-white"
+                                >
+                                    <option value="low">🟢 Low</option>
+                                    <option value="medium">🟡 Medium</option>
+                                    <option value="high">🔴 High</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Category / Tag</label>
+                                <input 
+                                    type="text"
+                                    value={category}
+                                    onChange={(e) => setCategory(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-indigo-300"
+                                    placeholder="Work, Personal, etc."
+                                />
+                            </div>
+                        </div>
+                        <div className="flex gap-3 justify-end">
+                            {editingTask && (
+                                <Button type="button" variant="secondary" onClick={onCancelEdit}>
+                                    Cancel
+                                </Button>
+                            )}
+                            <Button type="submit" variant="primary">
+                                {editingTask ? "Update Task" : "Add Task"}
+                            </Button>
+                        </div>
+                    </form>
+                </Card>
+            );
+        };
+        
+        // ========== MAIN APP COMPONENT ==========
+        const App = () => {
+            const [tasks, setTasks] = React.useState([]);
+            const [filter, setFilter] = React.useState("all");
+            const [searchTerm, setSearchTerm] = React.useState("");
+            const [editingTask, setEditingTask] = React.useState(null);
+            const [isLoading, setIsLoading] = React.useState(true);
+            
+            const addOrUpdateTask = (taskData) => {
+                if (editingTask) {
+                    setTasks(prev => prev.map(task => 
+                        task.id === editingTask.id 
+                            ? { ...task, ...taskData, updatedAt: Date.now() }
+                            : task
+                    ));
+                    setEditingTask(null);
+                } else {
+                    const newTask = {
+                        id: Date.now(),
+                        ...taskData,
+                        completed: false,
+                        createdAt: Date.now(),
+                    };
+                    setTasks(prev => [newTask, ...prev]);
+                }
+            };
+            
+            const deleteTask = (taskId) => {
+                setTasks(prev => prev.filter(task => task.id !== taskId));
+            };
+            
+            const toggleComplete = (taskId) => {
+                setTasks(prev => prev.map(task => 
+                    task.id === taskId ? { ...task, completed: !task.completed } : task
+                ));
+            };
+            
+            const clearCompleted = () => {
+                if (window.confirm("Delete all completed tasks?")) {
+                    setTasks(prev => prev.filter(task => !task.completed));
+                }
+            };
+            
+            React.useEffect(() => {
+                const storedTasks = localStorage.getItem("smartTasks");
+                if (storedTasks) {
+                    setTasks(JSON.parse(storedTasks));
+                }
+                setTimeout(() => setIsLoading(false), 400);
+            }, []);
+            
+            React.useEffect(() => {
+                if (!isLoading) {
+                    localStorage.setItem("smartTasks", JSON.stringify(tasks));
+                }
+            }, [tasks, isLoading]);
+            
+            const filteredTasks = tasks.filter(task => {
+                if (filter === "active") return !task.completed;
+                if (filter === "completed") return task.completed;
+                return true;
+            }).filter(task => {
+                const searchLower = searchTerm.toLowerCase();
+                return task.title.toLowerCase().includes(searchLower) || 
+                       (task.category && task.category.toLowerCase().includes(searchLower));
+            });
+            
+            const activeCount = tasks.filter(t => !t.completed).length;
+            const completedCount = tasks.filter(t => t.completed).length;
+            
+            const renderTaskList = () => {
+                if (filteredTasks.length === 0) {
+                    return (
+                        <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+                            <span className="text-5xl block mb-3">📭</span>
+                            <p className="text-gray-500 font-medium">
+                                {searchTerm ? "No matching tasks." : filter !== "all" ? `No ${filter} tasks.` : "No tasks yet! Create one above."}
+                            </p>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="space-y-2">
+                        {filteredTasks.map(task => (
+                            <TaskItem 
+                                key={task.id}
+                                task={task}
+                                onToggle={toggleComplete}
+                                onDelete={deleteTask}
+                                onEdit={setEditingTask}
+                            />
+                        ))}
+                    </div>
+                );
+            };
+            
+            if (isLoading) {
+                return (
+                    <div className="flex flex-col items-center justify-center min-h-[60vh]">
+                        <div className="loader rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+                        <p className="text-indigo-600 font-semibold">Loading your smart tasks...</p>
+                    </div>
+                );
+            }
+            
+            return (
+                <div className="max-w-4xl mx-auto px-4 py-8">
+                    <div className="text-center mb-8">
+                        <h1 className="text-4xl font-extrabold bg-gradient-to-r from-indigo-700 to-purple-700 bg-clip-text text-transparent">
+                            🧠 Smart Task Manager
+                        </h1>
+                        <p className="text-gray-500 mt-2">Organize, prioritize & sync instantly</p>
+                    </div>
+                    
+                    <TaskForm 
+                        onAddTask={addOrUpdateTask}
+                        editingTask={editingTask}
+                        onCancelEdit={() => setEditingTask(null)}
+                    />
+                    
+                    <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+                        <div className="flex gap-2 bg-white p-1 rounded-xl shadow-sm border">
+                            <button 
+                                onClick={() => setFilter("all")}
+                                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${filter === "all" ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                            >
+                                All ({tasks.length})
+                            </button>
+                            <button 
+                                onClick={() => setFilter("active")}
+                                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${filter === "active" ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                            >
+                                Active ({activeCount})
+                            </button>
+                            <button 
+                                onClick={() => setFilter("completed")}
+                                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${filter === "completed" ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                            >
+                                Completed ({completedCount})
+                            </button>
+                        </div>
+                        <div className="flex gap-3 items-center">
+                            <input 
+                                type="text"
+                                placeholder="🔍 Search tasks or category..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="px-4 py-2 border border-gray-300 rounded-xl w-64 focus:ring-indigo-300 focus:border-indigo-500 outline-none"
+                            />
+                            {completedCount > 0 && (
+                                <Button onClick={clearCompleted} variant="secondary">
+                                    Clear completed
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                    
+                    <Card className="p-4">
+                        <h2 className="text-xl font-semibold text-gray-800 mb-3">
+                            📋 Your Tasks
+                            {filter !== "all" && <span className="text-sm font-normal text-gray-500 ml-2">({filter})</span>}
+                        </h2>
+                        {renderTaskList()}
+                    </Card>
+                    
+                    <div className="mt-6 text-center text-xs text-gray-400">
+                        💾 All tasks auto-saved to localStorage • Data persists after page refresh
+                    </div>
+                </div>
+            );
+        };
+        
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById("root"));
+        root.render(<App />);
+    </script>
+</body>
+</html>
